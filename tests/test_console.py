@@ -1,174 +1,162 @@
 #!/usr/bin/python3
 # Graham S. Paul & Pearl Chimelumeze (test_console.py)
-"""
-Unittest for console command interpreter
-"""
-import unittest
-from unittest.mock import patch
-from io import StringIO
-import pep8
-import os
-import json
-import console
-import tests
+"""A simple console that handles EOF and exit"""
+
+
+import cmd
+import sys
+from models import storage
 from models.base_model import BaseModel
 from models.user import User
-from models.state import State
-from models.city import City
-from models.amenity import Amenity
 from models.place import Place
+from models.city import City
+from models.state import State
 from models.review import Review
-from models.engine.file_storage import FileStorage
+from models.amenity import Amenity
 
 
-class TestConsole(unittest.TestCase):
+class HBNBCommand(cmd.Cmd):
+    """Class for the cmd module"""
+    prompt = "(hbnb) "
+    __classes = ["BaseModel", "User", "Place", "City", "State", "Review", "Amenity"]
 
-    """Unittest for command interpreter"""
-    @classmethod
-    def setUpClass(self):
-        """Set up test"""
-        self.typing = console.HBNBCommand()
+    def do_quit(self, line):
+        """Method leave the cmd line"""
+        return True
 
-    @classmethod
-    def tearDownClass(self):
-        """Remove temporary file (file.json) created as a result"""
+    def do_EOF(self, line):
+        """Method leaves the cmd line"""
+        return True
+
+    def do_create(self, line):
+        """"Method generates fresh instance of BaseModel"""
+        if not line:
+            print("** class name missing **")
+            return False
         try:
-            os.remove("file.json")
-        except Exception:
+            cls = line.split()[0]
+            new_instance = eval(cls)()
+            new_instance.save()
+            print(new_instance.id)
+        except NameError:
+            print("** class doesn't exist **")
+
+    def do_show(self, line):
+        """Pulls the str format of the generated object"""
+        if not line:
+            print("** class name missing **")
+            return False
+        args = line.split()
+        cls = args[0]
+        if cls not in HBNBCommand.__classes:
+            print("** class doesn't exist **")
+            return False
+        if len(args) < 2:
+            print("** instance id missing **")
+            return False
+        inst_id = args[1]
+        storage.reload()
+        try:
+            instance = storage.all()[f"{cls}.{inst_id}"]
+            if instance:
+                print(instance)
+        except KeyError:
+            print("** no instance found **")
+
+    def do_destroy(self, line):
+        """Method removes an instance of BaseModel"""
+        if not line:
+            print('** class name missing **')
+            return False
+        args = line.split()
+        cls = args[0]
+        if cls not in HBNBCommand.__classes:
+            print("** class doesn't exist **")
+            return False
+        if len(args) < 2:
+            print("** instance id missing **")
+            return False
+        inst_id = args[1]
+        storage.reload()
+        try:
+            instance = storage.all()[f"{cls}.{inst_id}"]
+            if instance:
+                del storage.all()[f"{cls}.{inst_id}"]
+                storage.save()
+        except KeyError:
+            print("** no instance found **")
+
+    def do_all(self, line):
+        """Method pulls all instances based on or not on classname"""
+        storage.reload()
+        objects = storage.all()
+
+        if not line:
+            print([str(obj) for obj in objects.values()])
+        else:
+            try:
+                cls = line.split()[0]
+                if cls not in HBNBCommand.__classes:
+                    print("** class doesn't exist **")
+                    return False
+                print([str(obj) for key, obj in objects.items() if cls in key])
+            except KeyError:
+                print("** class doesn't exist **")
+
+    def do_update(self, line):
+        """Method moernizes one instance at a time"""
+        args = line.split()
+        if not line:
+            print("** class name missing **")
+            return False
+        cls = args[0]
+        storage.reload()
+        if cls not in HBNBCommand.__classes:
+            print("** class doesn't exist **")
+            return False
+        if len(args) < 2:
+            print("** instance id missing **")
+            return False
+        inst_id = args[1]
+        try:
+            instance = storage.all()[f"{cls}.{inst_id}"]
+            if not instance:
+                print("** no instance found **")
+                return False
+            else:
+                if len(args) < 3:
+                    print("** attribute name missing **")
+                    return False
+                else:
+                    if len(args) < 4:
+                        print("** value missing **")
+                        return False
+                    else:
+                        key = args[2]
+                        value = args[3]
+                        setattr(instance, key, value)
+                        instance.save()
+        except KeyError:
+            print("** no instance found **")
+
+    def emptyline(self):
+        """Null"""
+        pass
+
+    def precmd(self, line):
+        """Method handles what happens before a command is run"""
+        if not sys.stdin.isatty() and line != 'EOF':
+            print()
+        else:
             pass
+        return line
 
-    """Check for Pep8 style conformance"""
-    def test_pep8_console(self):
-        """Pep8 console.py"""
-        style = pep8.StyleGuide(quiet=False)
-        errors = 0
-        file = (["console.py"])
-        errors += style.check_files(file).total_errors
-        self.assertEqual(errors, 0, 'Need to fix Pep8')
-
-    def test_pep8_test_console(self):
-        """Pep8 test_console.py"""
-        style = pep8.StyleGuide(quiet=False)
-        errors = 0
-        file = (["tests/test_console.py"])
-        errors += style.check_files(file).total_errors
-        self.assertEqual(errors, 0, 'Need to fix Pep8')
-
-    """Check for docstring existance"""
-    def test_docstrings_in_console(self):
-        """Test docstrings exist in console.py"""
-        self.assertTrue(len(console.__doc__) >= 1)
-
-    def test_docstrings_in_test_console(self):
-        """Test docstrings exist in test_console.py"""
-        self.assertTrue(len(self.__doc__) >= 1)
-
-    """Test command interpreter outputs"""
-    def test_emptyline(self):
-        """Test no user input"""
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("\n")
-            self.assertEqual(fake_output.getvalue(), '')
-
-    def test_create(self):
-        """Test cmd output: create"""
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("create")
-            self.assertEqual("** class name missing **\n",
-                             fake_output.getvalue())
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("create SomeClass")
-            self.assertEqual("** class doesn't exist **\n",
-                             fake_output.getvalue())
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("create User")  # not used
-            self.typing.onecmd("create User")  # just need to create instances
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("User.all()")
-            self.assertEqual("[[User]",
-                             fake_output.getvalue()[:7])
-
-    def test_all(self):
-        """Test cmd output: all"""
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("all NonExistantModel")
-            self.assertEqual("** class doesn't exist **\n",
-                             fake_output.getvalue())
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("all Place")
-            self.assertEqual("[]\n", fake_output.getvalue())
-
-    def test_destroy(self):
-        """Test cmd output: destroy"""
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("destroy")
-            self.assertEqual("** class name missing **\n",
-                             fake_output.getvalue())
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("destroy TheWorld")
-            self.assertEqual("** class doesn't exist **\n",
-                             fake_output.getvalue())
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("destroy User")
-            self.assertEqual("** instance id missing **\n",
-                             fake_output.getvalue())
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("destroy BaseModel 12345")
-            self.assertEqual("** no instance found **\n",
-                             fake_output.getvalue())
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("City.destroy('123')")
-            self.assertEqual("** no instance found **\n",
-                             fake_output.getvalue())
-
-    def test_update(self):
-        """Test cmd output: update"""
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("update")
-            self.assertEqual("** class name missing **\n",
-                             fake_output.getvalue())
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("update You")
-            self.assertEqual("** class doesn't exist **\n",
-                             fake_output.getvalue())
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("update User")
-            self.assertEqual("** instance id missing **\n",
-                             fake_output.getvalue())
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("update User 12345")
-            self.assertEqual("** no instance found **\n",
-                             fake_output.getvalue())
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("update User 12345")
-            self.assertEqual("** no instance found **\n",
-                             fake_output.getvalue())
-
-    def test_show(self):
-        """Test cmd output: show"""
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("show")
-            self.assertEqual("** class name missing **\n",
-                             fake_output.getvalue())
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("SomeClass.show()")
-            self.assertEqual("** class doesn't exist **\n",
-                             fake_output.getvalue())
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("show Review")
-            self.assertEqual("** instance id missing **\n",
-                             fake_output.getvalue())
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("User.show('123')")
-            self.assertEqual("** no instance found **\n",
-                             fake_output.getvalue())
-
-    def test_class_cmd(self):
-        """Test cmd output: <class>.<cmd>"""
-        with patch('sys.stdout', new=StringIO()) as fake_output:
-            self.typing.onecmd("User.count()")
-            self.assertEqual(int, type(eval(fake_output.getvalue())))
+    def postloop(self):
+        """Method handles what happens before a command is run"""
+        if not sys.stdin.isatty():
+            print()
+        pass
 
 
-if __name__ == "__main__":
-    unittest.main()
+if __name__ == '__main__':
+    HBNBCommand().cmdloop()
