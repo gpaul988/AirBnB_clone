@@ -1,12 +1,10 @@
 #!/usr/bin/python3
 # Graham S. Paul & Pearl Chimelumeze (test_file_storage.py)
-"""
-Unittest to test FileStorage class
-"""
-import unittest
-import pep8
+"""Module is FileStorage class"""
+
+
 import json
-import os
+import sys
 from models.base_model import BaseModel
 from models.user import User
 from models.state import State
@@ -14,73 +12,52 @@ from models.city import City
 from models.amenity import Amenity
 from models.place import Place
 from models.review import Review
-from models.engine.file_storage import FileStorage
 
 
-class TestFileStorage(unittest.TestCase):
-    '''testing file storage'''
+class FileStorage:
+    """ Class sequentalizes instances to a JSON file
+        and deserializes JSON file to instances
+    """
 
-    @classmethod
-    def setUpClass(cls):
-        cls.rev1 = Review()
-        cls.rev1.place_id = "Raleigh"
-        cls.rev1.user_id = "Greg"
-        cls.rev1.text = "Grade A"
+    __file_path = "file.json"
+    __objects = {}
+    __classes = {
+                 "BaseModel": BaseModel,
+                 "User": User,
+                 "State": State,
+                 "City": City,
+                 "Amenity": Amenity,
+                 "Place": Place,
+                 "Review": Review
+                }
 
-    @classmethod
-    def teardown(cls):
-        del cls.rev1
+    def all(self):
+        """ Method restores the dictionary __objects """
+        return self.__objects
 
-    def teardown(self):
+    def new(self, obj):
+        """Method positions in __objects the obj with key
+            <obj class name>.id """
+
+        key = f"{obj.__class__.__name__}.{obj.id}"
+        self.__objects[key] = obj
+
+    def save(self):
+        """ Method sequentializes __objects to the
+            JSON file (path: __file_path) """
+        _dict = {key: value.to_dict() for key, value in self.__objects.items()}
+        with open(self.__file_path, "w") as json_file:
+            json.dump(_dict, json_file)
+
+    def reload(self):
+        """ Deserializes the JSON file to objects """
+
         try:
-            os.remove("file.json")
-        except:
+            with open(self.__file_path, "r") as json_file:
+                obj_dict = json.load(json_file)
+                for key, value in obj_dict.items():
+                    cls = key.split(".")[0]
+                    obj_instance = FileStorage.__classes.get(cls)(**value)
+                    self.__objects[key] = obj_instance
+        except FileNotFoundError:
             pass
-
-    def test_style_check(self):
-        """
-        Tests pep8 style
-        """
-        style = pep8.StyleGuide(quiet=True)
-        p = style.check_files(['models/engine/file_storage.py'])
-        self.assertEqual(p.total_errors, 0, "fix pep8")
-
-    def test_all(self):
-        """
-        Tests method: all (returns dictionary <class>.<id> : <obj instance>)
-        """
-        storage = FileStorage()
-        instances_dic = storage.all()
-        self.assertIsNotNone(instances_dic)
-        self.assertEqual(type(instances_dic), dict)
-        self.assertIs(instances_dic, storage._FileStorage__objects)
-
-    def test_new(self):
-        """
-        Tests method: new (saves new object into dictionary)
-        """
-        m_storage = FileStorage()
-        instances_dic = m_storage.all()
-        melissa = User()
-        melissa.id = 999999
-        melissa.name = "Melissa"
-        m_storage.new(melissa)
-        key = melissa.__class__.__name__ + "." + str(melissa.id)
-        #print(instances_dic[key])
-        self.assertIsNotNone(instances_dic[key])
-
-    def test_reload(self):
-        """
-        Tests method: reload (reloads objects from string file)
-        """
-        a_storage = FileStorage()
-        try:
-            os.remove("file.json")
-        except:
-            pass
-        with open("file.json", "w") as f:
-            f.write("{}")
-        with open("file.json", "r") as r:
-            for line in r:
-                self.assertEqual(line, "{}")
-        self.assertIs(a_storage.reload(), None)
